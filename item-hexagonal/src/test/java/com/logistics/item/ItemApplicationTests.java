@@ -1,8 +1,8 @@
 package com.logistics.item;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.logistics.item.infrastructure.persistence.jpa.repository.ItemJpaRepository;
-import com.logistics.item.infrastructure.persistence.jpa.repository.entity.ItemEntity;
+import com.logistics.item.infrastructure.repository.ItemJpaRepository;
+import com.logistics.item.infrastructure.repository.entity.ItemEntity;
 import com.logistics.item.infrastructure.rest.dto.request.PatchItemRequestDTO;
 import com.logistics.item.infrastructure.rest.dto.request.PostItemRequestDTO;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.data.mongo.AutoConfigureDataMongo;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -38,7 +39,7 @@ class ItemApplicationTests {
     private ObjectMapper objectMapper;
 
     @Autowired
-    private ItemRepository itemRepository;
+    private ItemJpaRepository itemJpaRepository;
 
 
     @BeforeAll
@@ -52,9 +53,9 @@ class ItemApplicationTests {
     @BeforeEach
     public void beforeEach() {
         log.info("Deleting items in database");
-        itemRepository.deleteAll();
+        itemJpaRepository.deleteAll();
         List<ItemEntity> data = EASY_RANDOM.objects(ItemEntity.class, 20).toList();
-        itemRepository.saveAll(data.stream().peek(e -> e.setId(UUID.randomUUID().toString())).toList());
+        itemJpaRepository.saveAll(data.stream().peek(e -> e.setId(UUID.randomUUID().toString())).toList());
     }
 
     @Test
@@ -65,7 +66,7 @@ class ItemApplicationTests {
 
     @Test
     void getAllItems_shouldReturn204NoContent() throws Exception {
-        itemRepository.deleteAll();
+        itemJpaRepository.deleteAll();
         mockMvc.perform(MockMvcRequestBuilders.get("/items"))
                 .andExpect(MockMvcResultMatchers.status().isNoContent());
     }
@@ -78,7 +79,7 @@ class ItemApplicationTests {
 
     @Test
     void getItemById_shouldReturn200IfFound() throws Exception {
-        String id = itemRepository.findAll().getFirst().getId();
+        String id = itemJpaRepository.findAll().getFirst().getId();
         mockMvc.perform(MockMvcRequestBuilders.get("/items/".concat(id)))
                 .andExpect(MockMvcResultMatchers.status().isOk());
     }
@@ -99,7 +100,8 @@ class ItemApplicationTests {
 
     @Test
     void createItem_shouldReturn422IfMissingFields() throws Exception {
-        PostItemRequestDTO dto = new PostItemRequestDTO(null);
+        PostItemRequestDTO dto = PostItemRequestDTO.builder()
+                .build(); // falta name
 
         mockMvc.perform(MockMvcRequestBuilders.post("/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -109,9 +111,11 @@ class ItemApplicationTests {
 
     @Test
     void createItem_shouldReturn409IfDuplicated() throws Exception {
-        String existingItemName = itemRepository.findAll().getFirst().getName();
+        String existingItemName = itemJpaRepository.findAll().getFirst().getName();
 
-        PostItemRequestDTO dto = new PostItemRequestDTO(existingItemName);
+        PostItemRequestDTO dto = PostItemRequestDTO.builder()
+                .name(existingItemName)
+                .build();
 
         mockMvc.perform(MockMvcRequestBuilders.post("/items")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -121,7 +125,7 @@ class ItemApplicationTests {
 
     @Test
     void deleteItem_shouldReturn204IfSuccessful() throws Exception {
-        String id = itemRepository.findAll().stream().findFirst().get().getId();
+        String id = itemJpaRepository.findAll().stream().findFirst().get().getId();
         mockMvc.perform(MockMvcRequestBuilders.delete("/items/".concat(id)))
                 .andExpect(MockMvcResultMatchers.status().isNoContent());
     }
@@ -140,9 +144,10 @@ class ItemApplicationTests {
 
     @Test
     void patchItem_shouldReturn204IfSuccessful() throws Exception {
-        String id = itemRepository.findAll().stream().findFirst().get().getId();
-        PatchItemRequestDTO dto = new PatchItemRequestDTO("New name");
-
+        String id = itemJpaRepository.findAll().stream().findFirst().get().getId();
+        PatchItemRequestDTO dto = PatchItemRequestDTO.builder()
+                .name("New name")
+                .build();
         mockMvc.perform(MockMvcRequestBuilders.patch("/items/".concat(id))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
@@ -151,9 +156,11 @@ class ItemApplicationTests {
 
     @Test
     void patchItem_shouldReturn404IfNotFound() throws Exception {
-        PatchItemRequestDTO dto = new PatchItemRequestDTO(null);
+        PatchItemRequestDTO dto = PatchItemRequestDTO.builder()
+                .name("asdf")
+                .build();
 
-        mockMvc.perform(MockMvcRequestBuilders.patch("/items/1")
+        mockMvc.perform(MockMvcRequestBuilders.patch("/items/".concat(UUID.randomUUID().toString()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(MockMvcResultMatchers.status().isNotFound());
@@ -161,9 +168,10 @@ class ItemApplicationTests {
 
     @Test
     void patchItem_shouldReturn422IfInvalidInput() throws Exception {
-        String id = itemRepository.findAll().stream().findFirst().get().getId();
-        PatchItemRequestDTO dto = new PatchItemRequestDTO("");
-
+        String id = itemJpaRepository.findAll().stream().findFirst().get().getId();
+        PatchItemRequestDTO dto = PatchItemRequestDTO.builder()
+                .name("")
+                .build();
         mockMvc.perform(MockMvcRequestBuilders.patch("/items/".concat(id))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
